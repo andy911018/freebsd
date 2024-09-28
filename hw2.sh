@@ -84,22 +84,85 @@ submit_answer() {
     echo "Response from submit_answer: $RESPONSE"
 }
 
+# Caesar Cipher 解密函數
+caesar_decrypt() {
+    encrypted_text="$1"
+    shift="$2"
+    decrypted_text=""
+
+    i=1
+    while [ $i -le ${#encrypted_text} ]; do
+        char=$(echo "$encrypted_text" | cut -c $i)
+        case "$char" in
+            [A-Ma-m])
+                decrypted_char=$(echo "$char" | tr 'A-Ma-m' 'N-Zn-za-m')
+                ;;
+            [N-Zn-z])
+                decrypted_char=$(echo "$char" | tr 'N-Zn-z' 'A-Ma-m')
+                ;;
+            '{' | '}')
+                decrypted_char="$char"
+                ;;
+            *)
+                decrypted_char="$char"
+                ;;
+        esac
+        decrypted_text="${decrypted_text}${decrypted_char}"
+        i=$((i + 1))
+    done
+
+    echo "$decrypted_text"
+}
+
 solve_math() {
     PROBLEM="$1"
-    # 假設 PROBLEM 格式為 "number1 + number2"
-    NUMBER1=$(echo "$PROBLEM" | awk '{print $1}')
-    OPERATOR=$(echo "$PROBLEM" | awk '{print $2}')
-    NUMBER2=$(echo "$PROBLEM" | awk '{print $3}')
-
-    # 只處理加法
-    if [ "$OPERATOR" = "+" ]; then
-        ANSWER=$(expr "$NUMBER1" + "$NUMBER2")
-    else
-        echo "Unsupported operator: $OPERATOR" >&2
-        exit 1
+    # 檢查問題格式：a (+/-) b = c
+    echo "$PROBLEM" | grep -E '^-?[0-9]+ [+\-] [0-9]+ = -?[0-9]+$' >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        submit_answer "Invalid problem"
+        exit 0
     fi
 
-    submit_answer "$ANSWER"
+    # 提取 a, operator, b, c
+    a=$(echo "$PROBLEM" | awk '{print $1}')
+    operator=$(echo "$PROBLEM" | awk '{print $2}')
+    b=$(echo "$PROBLEM" | awk '{print $3}')
+    c=$(echo "$PROBLEM" | awk '{print $5}')
+
+    # 驗證範圍
+    if [ "$a" -lt -10000 ] || [ "$a" -gt 10000 ]; then
+        submit_answer "Invalid problem"
+        exit 0
+    fi
+
+    if [ "$b" -lt 0 ] || [ "$b" -gt 10000 ]; then
+        submit_answer "Invalid problem"
+        exit 0
+    fi
+
+    if [ "$c" -lt -20000 ] || [ "$c" -gt 20000 ]; then
+        submit_answer "Invalid problem"
+        exit 0
+    fi
+
+    # 計算答案
+    if [ "$operator" = "+" ]; then
+        answer=$(expr "$a" + "$b")
+    elif [ "$operator" = "-" ]; then
+        answer=$(expr "$a" - "$b")
+    else
+        submit_answer "Invalid problem"
+        exit 0
+    fi
+
+    # 驗證計算結果是否等於 c
+    if [ "$answer" -ne "$c" ]; then
+        submit_answer "Invalid problem"
+        exit 0
+    fi
+
+    # 提交答案
+    submit_answer "$answer"
 }
 
 solve_join_nycu_csit() {
@@ -108,9 +171,37 @@ solve_join_nycu_csit() {
 
 solve_crack_password() {
     PROBLEM="$1"
-    # 使用 ROT13 轉換
-    ANSWER=$(echo "$PROBLEM" | tr 'A-Za-z' 'N-ZA-Mn-za-m')
-    submit_answer "$ANSWER"
+
+    # 檢查問題格式是否包含 { 和 } 並符合基本格式
+    echo "$PROBLEM" | grep -E '^NYCUNASA\{[A-Za-z]{16}\}$' >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        submit_answer "Invalid problem"
+        exit 0
+    fi
+
+    # 提取加密部分（忽略 { 和 }）
+    encrypted_part=$(echo "$PROBLEM" | sed 's/^NYCUNASA{//;s/}$//')
+
+    # 嘗試所有可能的移位 1 到 13
+    found=0
+    shift=1
+    while [ "$shift" -le 13 ]; do
+        decrypted=$(caesar_decrypt "$encrypted_part" "$shift")
+        # 構造完整明文
+        plaintext="NYCUNASA{$decrypted}"
+        # 檢查是否符合正則表達式
+        echo "$plaintext" | grep -E '^NYCUNASA\{[A-Za-z]{16}\}$' >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            submit_answer "$plaintext"
+            found=1
+            break
+        fi
+        shift=$((shift + 1))
+    done
+
+    if [ "$found" -eq 0 ]; then
+        submit_answer "Invalid problem"
+    fi
 }
 
 # 獲取任務詳細信息
@@ -133,5 +224,3 @@ case "$TASK_TYPE" in
         exit 1
         ;;
 esac
-
-
